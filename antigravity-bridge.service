@@ -6,7 +6,8 @@ After=signal-daemon.service
 Type=simple
 User=root
 WorkingDirectory=/root/antigravity_mailbox
-ExecStart=/usr/local/lib/hermes-agent/venv/bin/python /root/antigravity_mailbox/signal_bridge.py
+EnvironmentFile=/root/antigravity_mailbox/.env
+ExecStart=/root/antigravity_mailbox/venv/bin/python /root/antigravity_mailbox/signal_bridge.py
 Restart=on-failure
 RestartSec=5s
 

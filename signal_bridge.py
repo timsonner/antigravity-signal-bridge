@@ -14,14 +14,19 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
+        logging.FileHandler("/root/antigravity_mailbox/bridge.log", mode="a"),
     ],
 )
-logger = logging.getLogger("antigravity_bridge")
+logger = logging.getLogger("signal_bridge")
 
-# Configurations from Environment Variables
+# Configurations from Environment
 SIGNAL_HTTP_URL = os.getenv("SIGNAL_HTTP_URL", "http://127.0.0.1:8080").rstrip("/")
-SIGNAL_ACCOUNT = os.getenv("SIGNAL_ACCOUNT", "+YOUR_PHONE_NUMBER")
+SIGNAL_ACCOUNT = os.getenv("SIGNAL_ACCOUNT")
 MAILBOX_DIR = Path(os.getenv("MAILBOX_DIR", "/root/antigravity_mailbox"))
+
+if not SIGNAL_ACCOUNT:
+    logger.critical("SIGNAL_ACCOUNT environment variable is not configured! Please set it in your environment or .env file.")
+    sys.exit(1)
 
 INBOUND_DIR = MAILBOX_DIR / "inbound"
 OUTBOUND_DIR = MAILBOX_DIR / "outbound"
