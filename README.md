@@ -118,6 +118,17 @@ systemctl enable antigravity-bridge
 systemctl status antigravity-bridge
 ```
 
+4. **Managing the Bridge Service (Disconnecting / Reconnecting):**
+   If you want to temporarily disconnect or pause Antigravity's Signal integration (for example, during code development or while keeping the underlying `signal-daemon` active for other integrations like Hermes), you can stop the Python bridge service without affecting the daemon:
+
+   ```bash
+   # Temporarily pause/disconnect the bridge
+   systemctl stop antigravity-bridge
+
+   # Reconnect/resume the bridge
+   systemctl start antigravity-bridge
+   ```
+
 ---
 
 ## 📬 Step 5. File Formats & Mailbox Schema
