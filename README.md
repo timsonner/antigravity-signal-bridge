@@ -160,23 +160,29 @@ During live pair-programming sessions, you can direct your assistant to seamless
 
 ---
 
-## ⚡ Step 7. Hands-Free Automated Agent Polling (Zero Clicks)
+## ⚡ Step 7. Hands-Free Automated Agent Polling & Self-Healing Cron Pattern
 
-To allow the agent to poll for messages automatically while you are away (e.g., while at work) with **no keyboard clicks or manual approvals required**, we utilize the **Cascading Agent Polling Timer Pattern**.
+To allow the agent to poll for messages automatically while you are away (e.g., while at work) with **no keyboard clicks or manual approvals required**, we utilize the **Stateful Self-Healing Polling Pattern (Persistent Cron)**.
 
-This takes advantage of the platform's native scheduling tool (`schedule`) recursively:
+Conventional one-shot timers (e.g. cascading 60s timers) can break if an unapproved command blocks execution, a turn is interrupted, or an error is thrown, halting the active turn and stopping the cascade. The Stateful Cron pattern solves this permanently.
 
 ### The Architecture:
-1. **Initial Trigger:** The agent schedules a 60-second one-shot timer with a prompt that tracks the latest processed timestamp (e.g., `1780278019500`).
-2. **Periodic Check:** Every 60 seconds, the timer fires, waking up the agent.
-3. **Scan Inbound Mailbox:** The agent runs a quick, lightweight directory list on `/root/antigravity_mailbox/inbound/`.
-   - **If new messages exist** (timestamp > threshold): The agent reads them, displays them, processes instructions (e.g., executing commands or compiling stats), and generates replies.
-   - **If no new messages exist:** The agent does nothing.
-4. **Cascading Continuation:** Whether messages were found or not, at the very end of the turn, the agent schedules the **next** 60-second timer. If new messages were processed, the agent updates the threshold timestamp in the scheduled prompt to the highest timestamp found, preventing reprocessing.
 
-### Why this is highly optimized:
-* **No Clicks/Approvals:** Native platform scheduler timers do not require manual user review or terminal execution prompts, allowing 100% autonomous operation.
-* **Low Idle Cost:** Since no heavy background loops are executed, the agent only wakes up for a tiny fraction of a second every minute, verifying files with a fast `list_dir` scan and immediately going back to sleep if the mailbox is empty.
+1. **Persistent State File:** We store the last processed timestamp in a local state file on disk:
+   ```bash
+   /root/antigravity_mailbox/.last_processed_timestamp
+   ```
+2. **Recurring Background Cron:** The agent schedules a persistent background cron job that automatically triggers every minute:
+   - **Mode:** `CronExpression="* * * * *"`
+   - **Prompt:** Wakes up the agent, reads `/root/antigravity_mailbox/.last_processed_timestamp`, and scans `/root/antigravity_mailbox/inbound/` for newer messages.
+3. **Processing & State Persistence:**
+   - **If new messages exist:** The agent reads and executes instructions, drops reply payloads into `outbound/`, and updates `.last_processed_timestamp` on disk.
+   - **If no new messages exist:** The agent returns a single period `.` to save tokens and goes back to sleep.
+
+### Why this is completely robust:
+* **Self-Healing:** Since the cron runs as a system background task, **the loop can never break.** Even if a command fails, a turn is aborted, or an unapproved action freezes a session, the background cron will persistently wake the agent up on the next minute to safely resume.
+* **State Persistence:** The state survives system restarts or workspace reloads because the checkpoint is written on disk.
+* **No Manual Rescheduling:** The agent does not need to schedule any additional timers at the end of its turns, keeping the loop 100% autonomous.
 
 ---
 
