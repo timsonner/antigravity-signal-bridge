@@ -1,0 +1,14 @@
+[Unit]
+Description=Antigravity Signal Mailbox Bridge
+After=signal-daemon.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/antigravity_mailbox
+ExecStart=/usr/local/lib/hermes-agent/venv/bin/python /root/antigravity_mailbox/signal_bridge.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
