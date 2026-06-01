@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 import httpx
 
+import re
+
 # Configure Logging
 logging.basicConfig(
     level=logging.INFO,
@@ -18,13 +20,22 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("signal_bridge")
+# Silence httpx logs from showing up in standard streams
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Configurations from Environment
 SIGNAL_HTTP_URL = os.getenv("SIGNAL_HTTP_URL", "http://127.0.0.1:8080").rstrip("/")
 SIGNAL_ACCOUNT = os.getenv("SIGNAL_ACCOUNT")
 MAILBOX_DIR = Path(os.getenv("MAILBOX_DIR", "/root/antigravity_mailbox"))
+STREAMER_MODE = os.getenv("STREAMER_MODE", "false").lower() == "true"
+
+def redact_phone(val: str) -> str:
+    if not STREAMER_MODE or not isinstance(val, str):
+        return val
+    return re.sub(r'\+\d{10,15}', '+[REDACTED]', val)
 
 if not SIGNAL_ACCOUNT:
+
     logger.critical("SIGNAL_ACCOUNT environment variable is not configured! Please set it in your environment or .env file.")
     sys.exit(1)
 
@@ -66,7 +77,7 @@ async def handle_inbound_envelope(envelope_data: dict):
     if not sender or not message_text:
         return
 
-    logger.info(f"New Inbound Message from {sender} (Sync={is_sync}): {message_text}")
+    logger.info(f"New Inbound Message from {redact_phone(sender)} (Sync={is_sync}): {redact_phone(message_text)}")
 
     # Save to inbound directory as a JSON file
     filename = f"{timestamp}_{sender}.json".replace(":", "_")
@@ -82,14 +93,14 @@ async def handle_inbound_envelope(envelope_data: dict):
 
     try:
         filepath.write_text(json.dumps(payload, indent=2))
-        logger.info(f"Saved message to mailbox: {filepath.name}")
+        logger.info(f"Saved message to mailbox: {redact_phone(filepath.name)}")
     except Exception as e:
-        logger.error(f"Failed to save message {filename}: {e}")
+        logger.error(f"Failed to save message {redact_phone(filename)}: {e}")
 
 async def sse_listener_task():
     """Streams Server-Sent Events (SSE) from the signal-cli daemon."""
     url = f"{SIGNAL_HTTP_URL}/api/v1/events?account={SIGNAL_ACCOUNT}"
-    logger.info(f"Starting SSE Listener connecting to: {url}")
+    logger.info(f"Starting SSE Listener connecting to: {redact_phone(url)}")
     
     async with httpx.AsyncClient(timeout=None) as client:
         while True:
@@ -140,11 +151,11 @@ async def outbound_sender_task():
                         text = data.get("text")
                         
                         if not recipient or not text:
-                            logger.warning(f"Invalid outbound message format in {filepath.name}, deleting.")
+                            logger.warning(f"Invalid outbound message format in {redact_phone(filepath.name)}, deleting.")
                             filepath.unlink()
                             continue
                         
-                        logger.info(f"Sending Outbound Message to {recipient}: {text[:50]}...")
+                        logger.info(f"Sending Outbound Message to {redact_phone(recipient)}: {redact_phone(text)[:50]}...")
                         
                         # Form JSON-RPC payload
                         payload = {
@@ -165,7 +176,7 @@ async def outbound_sender_task():
                         if "error" in result:
                             logger.error(f"Signal RPC error: {result['error']}")
                         else:
-                            logger.info(f"Successfully sent outbound message for file: {filepath.name}")
+                            logger.info(f"Successfully sent outbound message for file: {redact_phone(filepath.name)}")
                             filepath.unlink()  # Delete file on success
                             
                     except Exception as e:

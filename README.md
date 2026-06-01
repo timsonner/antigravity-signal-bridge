@@ -178,3 +178,30 @@ This takes advantage of the platform's native scheduling tool (`schedule`) recur
 * **No Clicks/Approvals:** Native platform scheduler timers do not require manual user review or terminal execution prompts, allowing 100% autonomous operation.
 * **Low Idle Cost:** Since no heavy background loops are executed, the agent only wakes up for a tiny fraction of a second every minute, verifying files with a fast `list_dir` scan and immediately going back to sleep if the mailbox is empty.
 
+---
+
+## 🔒 Streamer Mode (Phone Number Redaction)
+
+To protect your personal mobile phone numbers during live-streams, video demonstrations, or sharing terminal screenshots, the Mailbox Bridge features a built-in **Streamer Mode**.
+
+### What It Does:
+1. **Log Redaction:** All incoming, outgoing, and file creation logs processed by `signal_bridge.py` have E.164 phone numbers stripped and replaced with `+[REDACTED]`.
+2. **Terminal Redaction:** The terminal-facing `mailbox_watcher.py` automatically redacts file names and parsed message payloads when printing new traffic on-screen.
+3. **HTTP Log Muting:** Mutes third-party HTTP logs (such as raw request endpoint paths from `httpx`) to prevent any query-parameter leaks of connection accounts.
+4. **Intact Backend Routing:** The actual file storage, inbound payloads on disk, and outgoing API RPC calls continue to use real numbers under the hood, ensuring the application functions flawlessly.
+
+### How to Enable:
+To turn on Streamer Mode, add the configuration variable to your active `.env` file and restart the system service:
+
+```bash
+# 1. Enable Streamer Mode in active configuration
+echo "STREAMER_MODE=true" >> /root/antigravity_mailbox/.env
+
+# 2. Restart the mailbox bridge daemon
+systemctl restart antigravity-bridge.service
+
+# 3. (Optional) Run the watcher in streamer mode
+python3 /root/antigravity_mailbox/mailbox_watcher.py
+```
+
+
