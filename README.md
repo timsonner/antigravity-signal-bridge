@@ -25,7 +25,7 @@ graph TD
 1. **Decoupled Messaging:** Avoids file-locking issues with `signal-cli` by leveraging a local HTTP/JSON-RPC daemon.
 2. **Note-to-Self Support:** Natively supports "Note to Self" messages (sync sent messages), letting you text your own bot number directly to orchestrate tasks.
 3. **Zero LLM Overhead on Idle:** Background operations consume near-zero resources (only checking files/polling SSE stream) until you invite the assistant to process the mailboxes.
-4. **Local Network Visibility:** Configured to bind to `0.0.0.0:8080`, allowing external computers on your local network to query the status or interact with the Signal REST API.
+4. **Strict Localhost Security:** Configured to bind strictly to `127.0.0.1:8080` by default. This protects the Signal REST API from unauthorized access, scanning, or spoofed command injection from other devices on your local network (LAN).
 
 ---
 
@@ -65,7 +65,7 @@ signal-cli link -n "AntigravityAgent"
 
 ## ⚙️ Step 3. Deploying the Signal HTTP Daemon
 
-We wrap `signal-cli` as a background HTTP daemon running on Port `8080`. To ensure it accepts external requests on your private LAN, we bind it to `0.0.0.0`.
+We wrap `signal-cli` as a background HTTP daemon running on Port `8080`. For maximum security, we bind it strictly to `127.0.0.1` to prevent unauthorized access or message injection from other devices on your private LAN.
 
 1. **Deploy Systemd Service:** Copy [signal-daemon.service](./signal-daemon.service) to `/etc/systemd/system/signal-daemon.service`. Make sure to replace `+YOUR_PHONE_NUMBER` with your registered Signal account:
 
