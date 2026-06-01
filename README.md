@@ -157,3 +157,24 @@ During live pair-programming sessions, you can direct your assistant to seamless
    * **Assistant:** Instantly writes a JSON file inside `outbound/`, which the background service dispatches in under a second.
 3. **Operator:** *"Check on Proxmox VMs, and text me the report on Signal."*
    * **Assistant:** Executes Proxmox system checks (`qm list`, `df -h`), compiles the report, and drops the outgoing JSON in the mailbox to deliver straight to your phone.
+
+---
+
+## ⚡ Step 7. Hands-Free Automated Agent Polling (Zero Clicks)
+
+To allow the agent to poll for messages automatically while you are away (e.g., while at work) with **no keyboard clicks or manual approvals required**, we utilize the **Cascading Agent Polling Timer Pattern**.
+
+This takes advantage of the platform's native scheduling tool (`schedule`) recursively:
+
+### The Architecture:
+1. **Initial Trigger:** The agent schedules a 60-second one-shot timer with a prompt that tracks the latest processed timestamp (e.g., `1780278019500`).
+2. **Periodic Check:** Every 60 seconds, the timer fires, waking up the agent.
+3. **Scan Inbound Mailbox:** The agent runs a quick, lightweight directory list on `/root/antigravity_mailbox/inbound/`.
+   - **If new messages exist** (timestamp > threshold): The agent reads them, displays them, processes instructions (e.g., executing commands or compiling stats), and generates replies.
+   - **If no new messages exist:** The agent does nothing.
+4. **Cascading Continuation:** Whether messages were found or not, at the very end of the turn, the agent schedules the **next** 60-second timer. If new messages were processed, the agent updates the threshold timestamp in the scheduled prompt to the highest timestamp found, preventing reprocessing.
+
+### Why this is highly optimized:
+* **No Clicks/Approvals:** Native platform scheduler timers do not require manual user review or terminal execution prompts, allowing 100% autonomous operation.
+* **Low Idle Cost:** Since no heavy background loops are executed, the agent only wakes up for a tiny fraction of a second every minute, verifying files with a fast `list_dir` scan and immediately going back to sleep if the mailbox is empty.
+
