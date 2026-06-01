@@ -174,7 +174,14 @@ Conventional one-shot timers (e.g. cascading 60s timers) can break if an unappro
    ```
 2. **Recurring Background Cron:** The agent schedules a persistent background cron job that automatically triggers every minute:
    - **Mode:** `CronExpression="* * * * *"`
-   - **Prompt:** Wakes up the agent, reads `/root/antigravity_mailbox/.last_processed_timestamp`, and scans `/root/antigravity_mailbox/inbound/` for newer messages.
+   - **Prompt:** Use a strictly non-conversational, 100% autonomous prompt to prevent UI prompts or stream interruptions.
+     > [!IMPORTANT]
+     > **The prompt must never instruct the agent to "present messages to the user" or write conversational chat.** If a background cron task attempts to talk to the user in the main stream, the platform's execution interceptor blocks the background thread, prompts for manual keyboard/terminal input, or breaks the recurring schedule loop.
+     
+     **Recommended Robust Cron Prompt:**
+     ```
+     Check the state file /root/antigravity_mailbox/.last_processed_timestamp to read the last processed message timestamp. Then list /root/antigravity_mailbox/inbound/ for any new JSON files with a timestamp greater than that. If any exist, view their contents, process them, write any outbound replies to /root/antigravity_mailbox/outbound/, and update the state file /root/antigravity_mailbox/.last_processed_timestamp with the highest timestamp found. Output a brief technical status log and finish immediately. NEVER output conversational text, ask questions, or prompt the user. If no new messages are found, output a single period "." and finish to save tokens.
+     ```
 3. **Processing & State Persistence:**
    - **If new messages exist:** The agent reads and executes instructions, drops reply payloads into `outbound/`, and updates `.last_processed_timestamp` on disk.
    - **If no new messages exist:** The agent returns a single period `.` to save tokens and goes back to sleep.
@@ -183,6 +190,7 @@ Conventional one-shot timers (e.g. cascading 60s timers) can break if an unappro
 * **Self-Healing:** Since the cron runs as a system background task, **the loop can never break.** Even if a command fails, a turn is aborted, or an unapproved action freezes a session, the background cron will persistently wake the agent up on the next minute to safely resume.
 * **State Persistence:** The state survives system restarts or workspace reloads because the checkpoint is written on disk.
 * **No Manual Rescheduling:** The agent does not need to schedule any additional timers at the end of its turns, keeping the loop 100% autonomous.
+* **Prompt-Safe Execution:** By keeping outputs strictly non-conversational and logging-oriented, the agent finishes each cron tick instantly without triggering terminal locks or user prompts.
 
 ---
 
