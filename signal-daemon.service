@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=<user>
 # Explicitly passing the SDKMAN Java 25 path to the Environment
-Environment="PATH=/root/.sdkman/candidates/java/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/<user>/.sdkman/candidates/java/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/usr/local/bin/signal-cli --account +YOUR_PHONE_NUMBER daemon --http 127.0.0.1:8080
 Restart=on-failure
 RestartSec=5s

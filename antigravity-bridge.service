@@ -4,10 +4,10 @@ After=signal-daemon.service
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/antigravity_mailbox
-EnvironmentFile=/root/antigravity_mailbox/.env
-ExecStart=/root/antigravity_mailbox/venv/bin/python /root/antigravity_mailbox/signal_bridge.py
+User=<user>
+WorkingDirectory=/<user>/antigravity_mailbox
+EnvironmentFile=/<user>/antigravity_mailbox/.env
+ExecStart=/<user>/antigravity_mailbox/venv/bin/python /<user>/antigravity_mailbox/signal_bridge.py
 Restart=on-failure
 RestartSec=5s
 

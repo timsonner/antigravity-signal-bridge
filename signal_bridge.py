@@ -16,7 +16,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/root/antigravity_mailbox/bridge.log", mode="a"),
+        logging.FileHandler(Path.home() / "antigravity_mailbox" / "bridge.log", mode="a"),
     ],
 )
 logger = logging.getLogger("signal_bridge")
@@ -26,7 +26,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # Configurations from Environment
 SIGNAL_HTTP_URL = os.getenv("SIGNAL_HTTP_URL", "http://127.0.0.1:8080").rstrip("/")
 SIGNAL_ACCOUNT = os.getenv("SIGNAL_ACCOUNT")
-MAILBOX_DIR = Path(os.getenv("MAILBOX_DIR", "/root/antigravity_mailbox"))
+MAILBOX_DIR = Path(os.getenv("MAILBOX_DIR", str(Path.home() / "antigravity_mailbox")))
 STREAMER_MODE = os.getenv("STREAMER_MODE", "false").lower() == "true"
 
 def redact_phone(val: str) -> str:

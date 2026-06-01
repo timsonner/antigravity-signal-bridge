@@ -6,10 +6,10 @@ import json
 import re
 from pathlib import Path
 
-INBOUND_DIR = Path("/root/antigravity_mailbox/inbound")
+INBOUND_DIR = Path.home() / "antigravity_mailbox" / "inbound"
 
 def load_env():
-    env_path = Path("/root/antigravity_mailbox/.env")
+    env_path = Path.home() / "antigravity_mailbox" / ".env"
     if env_path.exists():
         for line in env_path.read_text().splitlines():
             line = line.strip()
@@ -21,7 +21,7 @@ def main():
     load_env()
     streamer_mode = os.getenv("STREAMER_MODE", "false").lower() == "true"
     
-    print(f"Mailbox watcher started (Streamer Mode: {streamer_mode}). Monitoring /root/antigravity_mailbox/inbound for new messages...", flush=True)
+    print(f"Mailbox watcher started (Streamer Mode: {streamer_mode}). Monitoring {INBOUND_DIR} for new messages...", flush=True)
     
     def redact(text):
         if not streamer_mode or not isinstance(text, str):

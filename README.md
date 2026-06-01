@@ -1,6 +1,6 @@
 # 🛰️ Antigravity Signal Mailbox Bridge
 
-This repository tracks the end-to-end setup, installation, and deployment of a **file-based Signal Messenger Integration** designed specifically for **Antigravity** (and other session-based coding/virtualization assistants) running on **Proxmox VE (PVE) / Debian**.
+This repository tracks the end-to-end setup, installation, and deployment of a **file-based Signal Messenger Integration** designed specifically for **Antigravity** (and other session-based coding/virtualization assistants) running on **Debian / Ubuntu / standard Linux environments**.
 
 ---
 
@@ -14,9 +14,9 @@ The **Mailbox Pattern** solves this beautifully. By using a lightweight backgrou
 graph TD
     User([Your Phone]) <-->|Signal Protocol| SD[Signal-CLI Daemon: Port 8080]
     SD -->|SSE Events GET| ASB[Antigravity Bridge Service]
-    ASB -->|Write JSON| Inbound[/root/antigravity_mailbox/inbound/]
+    ASB -->|Write JSON| Inbound[/<user>/antigravity_mailbox/inbound/]
     Inbound -.->|Read Message| AG[Antigravity Session]
-    AG -.->|Write Reply| Outbound[/root/antigravity_mailbox/outbound/]
+    AG -.->|Write Reply| Outbound[/<user>/antigravity_mailbox/outbound/]
     Outbound -->|Post JSON-RPC| ASB
     ASB -->|Send RPC POST| SD
 ```
@@ -97,14 +97,14 @@ The `signal_bridge.py` script acts as the bi-directional liaison. It runs persis
 
 1. **Setup Directory Structures:**
 ```bash
-mkdir -p /root/antigravity_mailbox/inbound
-mkdir -p /root/antigravity_mailbox/outbound
+mkdir -p /<user>/antigravity_mailbox/inbound
+mkdir -p /<user>/antigravity_mailbox/outbound
 ```
 
 2. **Deploy Bridge Script:** Move the `signal_bridge.py` script into your configuration folder and make it executable:
 ```bash
-cp signal_bridge.py /root/antigravity_mailbox/
-chmod +x /root/antigravity_mailbox/signal_bridge.py
+cp signal_bridge.py /<user>/antigravity_mailbox/
+chmod +x /<user>/antigravity_mailbox/signal_bridge.py
 ```
 
 3. **Install Bridge Service:** Copy [antigravity-bridge.service](./antigravity-bridge.service) into `/etc/systemd/system/`:
@@ -122,7 +122,7 @@ systemctl status antigravity-bridge
 
 ## 📬 Step 5. File Formats & Mailbox Schema
 
-The directories `/root/antigravity_mailbox/inbound/` and `/root/antigravity_mailbox/outbound/` contain simple JSON payloads.
+The directories `/<user>/antigravity_mailbox/inbound/` and `/<user>/antigravity_mailbox/outbound/` contain simple JSON payloads.
 
 ### 📥 Inbound Message JSON
 When a text arrives, it is captured inside `inbound/` as `<timestamp>_<sender>.json`:
@@ -155,8 +155,8 @@ During live pair-programming sessions, you can direct your assistant to seamless
    * **Assistant:** Lists and parses files inside `inbound/`, extracts the text, and displays it to you.
 2. **Operator:** *"Can you reply to +YOUR_PHONE_NUMBER and say: Setup is complete!"*
    * **Assistant:** Instantly writes a JSON file inside `outbound/`, which the background service dispatches in under a second.
-3. **Operator:** *"Check on Proxmox VMs, and text me the report on Signal."*
-   * **Assistant:** Executes Proxmox system checks (`qm list`, `df -h`), compiles the report, and drops the outgoing JSON in the mailbox to deliver straight to your phone.
+3. **Operator:** *"Check on system resources, and text me the report on Signal."*
+   * **Assistant:** Executes standard Linux system checks (`df -h`, `free -m`), compiles the report, and drops the outgoing JSON in the mailbox to deliver straight to your phone.
 
 ---
 
@@ -170,7 +170,7 @@ Conventional one-shot timers (e.g. cascading 60s timers) can break if an unappro
 
 1. **Persistent State File:** We store the last processed timestamp in a local state file on disk:
    ```bash
-   /root/antigravity_mailbox/.last_processed_timestamp
+   /<user>/antigravity_mailbox/.last_processed_timestamp
    ```
 2. **Recurring Background Cron:** The agent schedules a persistent background cron job that automatically triggers every minute:
    - **Mode:** `CronExpression="* * * * *"`
@@ -180,7 +180,7 @@ Conventional one-shot timers (e.g. cascading 60s timers) can break if an unappro
      
      **Recommended Robust Cron Prompt:**
      ```
-     Check the state file /root/antigravity_mailbox/.last_processed_timestamp to read the last processed message timestamp. Then list /root/antigravity_mailbox/inbound/ for any new JSON files with a timestamp greater than that. If any exist, view their contents, process them, write any outbound replies to /root/antigravity_mailbox/outbound/, and update the state file /root/antigravity_mailbox/.last_processed_timestamp with the highest timestamp found. Output a brief technical status log and finish immediately. NEVER output conversational text, ask questions, or prompt the user. If no new messages are found, output a single period "." and finish to save tokens.
+     Check the state file /<user>/antigravity_mailbox/.last_processed_timestamp to read the last processed message timestamp. Then list /<user>/antigravity_mailbox/inbound/ for any new JSON files with a timestamp greater than that. If any exist, view their contents, process them, write any outbound replies to /<user>/antigravity_mailbox/outbound/, and update the state file /<user>/antigravity_mailbox/.last_processed_timestamp with the highest timestamp found. Output a brief technical status log and finish immediately. NEVER output conversational text, ask questions, or prompt the user. If no new messages are found, output a single period "." and finish to save tokens.
      ```
 3. **Processing & State Persistence:**
    - **If new messages exist:** The agent reads and executes instructions, drops reply payloads into `outbound/`, and updates `.last_processed_timestamp` on disk.
@@ -209,13 +209,13 @@ To turn on Streamer Mode, add the configuration variable to your active `.env` f
 
 ```bash
 # 1. Enable Streamer Mode in active configuration
-echo "STREAMER_MODE=true" >> /root/antigravity_mailbox/.env
+echo "STREAMER_MODE=true" >> /<user>/antigravity_mailbox/.env
 
 # 2. Restart the mailbox bridge daemon
 systemctl restart antigravity-bridge.service
 
 # 3. (Optional) Run the watcher in streamer mode
-python3 /root/antigravity_mailbox/mailbox_watcher.py
+python3 /<user>/antigravity_mailbox/mailbox_watcher.py
 ```
 
 
