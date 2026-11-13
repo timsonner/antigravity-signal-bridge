@@ -1,232 +1,187 @@
-# 🛰️ Antigravity Signal Mailbox Bridge
+# Antigravity Signal Mailbox Bridge
 
-This repository tracks the end-to-end setup, installation, and deployment of a **file-based Signal Messenger Integration** designed specifically for **Antigravity** (and other session-based coding/virtualization assistants) running on **Debian / Ubuntu / standard Linux environments**.
+A small Python bridge between a local signal-cli HTTP daemon and two directories of JSON files.
 
----
+`signal_bridge.py` holds the HTTP connection. It writes each inbound Signal text message to `inbound/` and sends any JSON file dropped in `outbound/`. A session or script can read and write those files without keeping its own Signal connection open. `mailbox_watcher.py` prints new inbound files as they appear.
 
-## 📖 Overview & Architecture
+This repository does not ship `signal-cli`, a Java runtime, or a test suite.
 
-Conventional chat integrations require a persistent background agent running its own LLM completion loop. For session-based assistants (like Antigravity or custom terminal environments), running a persistent completion loop inside a CLI is either impossible or suffers from DB locking conflicts.
+## Prerequisites
 
-The **Mailbox Pattern** solves this beautifully. By using a lightweight background bridge service to manage communication states, inbound and outbound traffic is decoupled into simple, file-based directories:
+- Python 3. The scripts use `#!/usr/bin/env python3`.
+- The stdlib `venv` module. On Debian and Ubuntu, `python3 -m venv` needs the matching `python3-venv` package (this environment needed `python3.12-venv`).
+- `httpx`, imported by `signal_bridge.py`. There is no pinned requirements file.
+- For the systemd units only:
+  - `signal-cli` installed at `/usr/local/bin/signal-cli`.
+  - A Java executable on `PATH`. `signal-daemon.service` prepends `/<user>/.sdkman/candidates/java/current/bin`.
+  - An account that `signal-cli` already knows. This repo does not register or link an account.
+  - systemd.
 
-```mermaid
-graph TD
-    User([Your Phone]) <-->|Signal Protocol| SD[Signal-CLI Daemon: Port 8080]
-    SD -->|SSE Events GET| ASB[Antigravity Bridge Service]
-    ASB -->|Write JSON| Inbound[/<user>/antigravity_mailbox/inbound/]
-    Inbound -.->|Read Message| AG[Antigravity Session]
-    AG -.->|Write Reply| Outbound[/<user>/antigravity_mailbox/outbound/]
-    Outbound -->|Post JSON-RPC| ASB
-    ASB -->|Send RPC POST| SD
-```
+`signal_bridge.py` does not read a `.env` file. Export the variables in the shell, or let `antigravity-bridge.service` load them with `EnvironmentFile`. `mailbox_watcher.py` does read `~/antigravity_mailbox/.env` if that file exists.
 
-### Key Highlights:
-1. **Decoupled Messaging:** Avoids file-locking issues with `signal-cli` by leveraging a local HTTP/JSON-RPC daemon.
-2. **Note-to-Self Support:** Natively supports "Note to Self" messages (sync sent messages), letting you text your own bot number directly to orchestrate tasks.
-3. **Zero LLM Overhead on Idle:** Background operations consume near-zero resources (only checking files/polling SSE stream) until you invite the assistant to process the mailboxes.
-4. **Strict Localhost Security:** Configured to bind strictly to `127.0.0.1:8080` by default. This protects the Signal REST API from unauthorized access, scanning, or spoofed command injection from other devices on your local network (LAN).
+## Install
 
----
-
-## 🚀 Step 1. Prerequisites & Java 25 Runtime Setup
-
-Recent releases of `signal-cli` are compiled against **Java 25 (class file version 69.0)**. Running standard Debian JRE environments yields a `java.lang.UnsupportedClassVersionError`.
-
-To run bleeding-edge Java runtimes cleanly without breaking native Debian package mappings, we utilize **SDKMAN!**:
+From this repository:
 
 ```bash
-# 1. Install required support utilities
-apt update && apt install curl zip unzip -y
-
-# 2. Install SDKMAN!
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# 3. Install OpenJDK 25 and map as default
-sdk install java 25-open
-java -version
+mkdir -p "$HOME/antigravity_mailbox"
+python3 -m venv "$HOME/antigravity_mailbox/venv"
+"$HOME/antigravity_mailbox/venv/bin/pip" install httpx
+cp signal_bridge.py mailbox_watcher.py "$HOME/antigravity_mailbox/"
+cp .env.example "$HOME/antigravity_mailbox/.env"
 ```
 
----
+Edit `$HOME/antigravity_mailbox/.env`. Set `SIGNAL_ACCOUNT` to the signal-cli account. `SIGNAL_HTTP_URL` defaults to `http://127.0.0.1:8080`. `MAILBOX_DIR` defaults to `~/antigravity_mailbox`. `STREAMER_MODE` defaults to `false`.
 
-## 🔑 Step 2. Signal Account Linking
+There is no build step.
 
-Ensure `signal-cli` is downloaded and linked as a secondary device to your primary Signal app (on your phone):
+## Run
+
+`signal_bridge.py` opens `~/antigravity_mailbox/bridge.log` at import, even when `MAILBOX_DIR` points somewhere else. Create that directory before starting the process.
+
+Manual run (the process stays in the foreground and reconnects to the daemon):
 
 ```bash
-# Generate the device linking payload and QR Code
-signal-cli link -n "AntigravityAgent"
+mkdir -p "$HOME/antigravity_mailbox"
+set -a
+. "$HOME/antigravity_mailbox/.env"
+set +a
+"$HOME/antigravity_mailbox/venv/bin/python" "$HOME/antigravity_mailbox/signal_bridge.py"
 ```
 
-* **Action:** Open Signal on your mobile client, head to `Settings ➔ Linked Devices ➔ Link New Device`, and scan the printed terminal QR code.
-
----
-
-## ⚙️ Step 3. Deploying the Signal HTTP Daemon
-
-We wrap `signal-cli` as a background HTTP daemon running on Port `8080`. For maximum security, we bind it strictly to `127.0.0.1` to prevent unauthorized access or message injection from other devices on your private LAN.
-
-1. **Deploy Systemd Service:** Copy [signal-daemon.service](./signal-daemon.service) to `/etc/systemd/system/signal-daemon.service`. Make sure to replace `+YOUR_PHONE_NUMBER` with your registered Signal account:
+Equivalent exports, if you do not want to source `.env`:
 
 ```bash
-# Edit file and copy to systemd folder
-cp signal-daemon.service /etc/systemd/system/
-nano /etc/systemd/system/signal-daemon.service
+export SIGNAL_HTTP_URL="http://127.0.0.1:8080"
+export SIGNAL_ACCOUNT="YOUR_SIGNAL_ACCOUNT"
+export MAILBOX_DIR="$HOME/antigravity_mailbox"
+export STREAMER_MODE="false"
+mkdir -p "$HOME/antigravity_mailbox"
+"$HOME/antigravity_mailbox/venv/bin/python" "$HOME/antigravity_mailbox/signal_bridge.py"
 ```
 
-2. **Initialize and Start Daemon:**
+If `SIGNAL_ACCOUNT` is unset, the process logs a critical error and exits with status 1.
+
+Print new inbound files (stdlib only; the watcher always uses `~/antigravity_mailbox/inbound`):
+
 ```bash
-# Clean up any manually executed instances
-pkill -f signal-cli
-
-# Reload systemd and launch daemon
-systemctl daemon-reload
-systemctl start signal-daemon
-systemctl enable signal-daemon
-
-# Verify stable runtime status
-systemctl status signal-daemon
+python3 mailbox_watcher.py
 ```
 
----
+### systemd
 
-## ⚙️ Step 4. Deploying the Antigravity Mailbox Bridge
+The unit files in this repo use the literal path prefix `/<user>/` and a placeholder account in `signal-daemon.service`. Replace those placeholders before copying them into `/etc/systemd/system/`. `antigravity-bridge.service` runs `/<user>/antigravity_mailbox/venv/bin/python` on `/<user>/antigravity_mailbox/signal_bridge.py` and reads `/<user>/antigravity_mailbox/.env`. `signal-daemon.service` runs:
 
-The `signal_bridge.py` script acts as the bi-directional liaison. It runs persistently to stream inbound text messages (via SSE) into the `inbound` mailbox and poll the `outbound` directory for queued replies.
-
-1. **Setup Directory Structures:**
 ```bash
-mkdir -p /<user>/antigravity_mailbox/inbound
-mkdir -p /<user>/antigravity_mailbox/outbound
+/usr/local/bin/signal-cli --account YOUR_SIGNAL_ACCOUNT daemon --http 127.0.0.1:8080
 ```
 
-2. **Deploy Bridge Script:** Move the `signal_bridge.py` script into your configuration folder and make it executable:
+After the unit files match this machine:
+
 ```bash
-cp signal_bridge.py /<user>/antigravity_mailbox/
-chmod +x /<user>/antigravity_mailbox/signal_bridge.py
+sudo cp signal-daemon.service /etc/systemd/system/signal-daemon.service
+sudo cp antigravity-bridge.service /etc/systemd/system/antigravity-bridge.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now signal-daemon.service
+sudo systemctl enable --now antigravity-bridge.service
+sudo systemctl status signal-daemon.service antigravity-bridge.service
 ```
 
-3. **Install Bridge Service:** Copy [antigravity-bridge.service](./antigravity-bridge.service) into `/etc/systemd/system/`:
+Stop or start the bridge without stopping the daemon:
+
 ```bash
-cp antigravity-bridge.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl start antigravity-bridge
-systemctl enable antigravity-bridge
-
-# Confirm clean loopback connection
-systemctl status antigravity-bridge
+sudo systemctl stop antigravity-bridge.service
+sudo systemctl start antigravity-bridge.service
 ```
 
-4. **Managing the Bridge Service (Disconnecting / Reconnecting):**
-   If you want to temporarily disconnect or pause Antigravity's Signal integration (for example, during code development or while keeping the underlying `signal-daemon` active for other integrations like Hermes), you can stop the Python bridge service without affecting the daemon:
+## Test
 
-   ```bash
-   # Temporarily pause/disconnect the bridge
-   systemctl stop antigravity-bridge
+This repository has no test suite and no test runner configuration. The check below only compiles both scripts:
 
-   # Reconnect/resume the bridge
-   systemctl start antigravity-bridge
-   ```
+```bash
+python3 -m py_compile signal_bridge.py mailbox_watcher.py
+```
 
----
+## Usage
 
-## 📬 Step 5. File Formats & Mailbox Schema
+### Environment
 
-The directories `/<user>/antigravity_mailbox/inbound/` and `/<user>/antigravity_mailbox/outbound/` contain simple JSON payloads.
+| Variable | Used by | Default | Role |
+| --- | --- | --- | --- |
+| `SIGNAL_HTTP_URL` | `signal_bridge.py` | `http://127.0.0.1:8080` | signal-cli HTTP base URL, trailing slash removed |
+| `SIGNAL_ACCOUNT` | `signal_bridge.py` | none (required) | Account passed to the events URL and the send RPC |
+| `MAILBOX_DIR` | `signal_bridge.py` | `~/antigravity_mailbox` | Parent of `inbound/` and `outbound/` |
+| `STREAMER_MODE` | both scripts | `false` | When `true`, redact `+` followed by 10 to 15 digits in bridge logs and watcher output |
 
-### 📥 Inbound Message JSON
-When a text arrives, it is captured inside `inbound/` as `<timestamp>_<sender>.json`:
+`STREAMER_MODE=true` changes logs and watcher output only. Files on disk and the JSON-RPC body still contain the original values.
+
+### Inbound
+
+The bridge subscribes with:
+
+`GET {SIGNAL_HTTP_URL}/api/v1/events?account={SIGNAL_ACCOUNT}`
+
+and header `Accept: text/event-stream`. For each SSE `data:` line it reads `envelope` (or the payload itself). It keeps a `dataMessage`, or `syncMessage.sentMessage` when that object is present (treated as a sync / note-to-self message). Empty texts are ignored.
+
+Each saved file is `{timestamp}_{sender}.json` under `{MAILBOX_DIR}/inbound/`. Colons in the sender are replaced with underscores. The JSON fields are:
+
+| Field | Source |
+| --- | --- |
+| `sender` | `sourceNumber`, else `sourceUuid`, else `source`. For a sync message with no source, `SIGNAL_ACCOUNT` |
+| `text` | `message` |
+| `timestamp` | Message timestamp, else the current time in milliseconds |
+| `sourceName` | Envelope `sourceName`, else `Self` for a sync message, else an empty string |
+| `isSyncMessage` | `true` when the text came from `syncMessage.sentMessage` |
+
+On HTTP errors the listener waits 5 seconds and connects again.
+
+### Outbound
+
+Drop a `*.json` file in `{MAILBOX_DIR}/outbound/`:
+
 ```json
 {
-  "sender": "+YOUR_PHONE_NUMBER",
-  "text": "Check VM status!",
-  "timestamp": 1780275349245,
-  "sourceName": "Tim Sonner",
-  "isSyncMessage": true
+  "recipient": "YOUR_SIGNAL_ACCOUNT",
+  "text": "All checks finished."
 }
 ```
 
-### 📤 Outbound Reply JSON
-To transmit a message back to a user, generate a JSON file in `outbound/` (e.g., `reply_100.json`). The bridge service will instantly deliver it and delete the file:
+About once a second the bridge reads those files in sorted order and posts JSON-RPC to `{SIGNAL_HTTP_URL}/api/v1/rpc`:
+
 ```json
 {
-  "recipient": "+YOUR_PHONE_NUMBER",
-  "text": "All VMs are healthy!"
+  "jsonrpc": "2.0",
+  "method": "send",
+  "params": {
+    "account": "SIGNAL_ACCOUNT",
+    "message": "All checks finished.",
+    "recipient": ["YOUR_SIGNAL_ACCOUNT"]
+  },
+  "id": "antigravity_<milliseconds>"
 }
 ```
 
----
+A file missing `recipient` or `text` is deleted. A file is deleted after a response that does not contain an `error` field. A failed send is left in place and retried on the next poll.
 
-## 🧠 Step 6. Interactive Session Workflows
+### Watcher
 
-During live pair-programming sessions, you can direct your assistant to seamlessly manage your Signal communications:
+`mailbox_watcher.py` polls `~/antigravity_mailbox/inbound/*.json` every 5 seconds. It ignores files already present at startup, then prints each new file as JSON. With `STREAMER_MODE=true` in `~/antigravity_mailbox/.env` (or in the environment), it redacts the file name plus the `sender` and `text` fields in that printout. It does not follow `MAILBOX_DIR`.
 
-1. **Operator:** *"Antigravity, check my mailbox."*
-   * **Assistant:** Lists and parses files inside `inbound/`, extracts the text, and displays it to you.
-2. **Operator:** *"Can you reply to +YOUR_PHONE_NUMBER and say: Setup is complete!"*
-   * **Assistant:** Instantly writes a JSON file inside `outbound/`, which the background service dispatches in under a second.
-3. **Operator:** *"Check on system resources, and text me the report on Signal."*
-   * **Assistant:** Executes standard Linux system checks (`df -h`, `free -m`), compiles the report, and drops the outgoing JSON in the mailbox to deliver straight to your phone.
+### Logs
 
----
+Bridge logs go to stdout and to `~/antigravity_mailbox/bridge.log`. The `httpx` logger is set to `WARNING`.
 
-## ⚡ Step 7. Hands-Free Automated Agent Polling & Self-Healing Cron Pattern
+## Layout
 
-To allow the agent to poll for messages automatically while you are away (e.g., while at work) with **no keyboard clicks or manual approvals required**, we utilize the **Stateful Self-Healing Polling Pattern (Persistent Cron)**.
+| Path | Role |
+| --- | --- |
+| `signal_bridge.py` | SSE listener and outbound sender |
+| `mailbox_watcher.py` | Foreground inbound printer |
+| `signal-daemon.service` | systemd unit for `signal-cli daemon --http 127.0.0.1:8080` |
+| `antigravity-bridge.service` | systemd unit for `signal_bridge.py` |
+| `.env.example` | Sample environment file for the bridge unit and the watcher |
+| `.gitignore` | Ignores `.env`, virtualenvs, logs, `inbound/`, and `outbound/` |
 
-Conventional one-shot timers (e.g. cascading 60s timers) can break if an unapproved command blocks execution, a turn is interrupted, or an error is thrown, halting the active turn and stopping the cascade. The Stateful Cron pattern solves this permanently.
+## License
 
-### The Architecture:
-
-1. **Persistent State File:** We store the last processed timestamp in a local state file on disk:
-   ```bash
-   /<user>/antigravity_mailbox/.last_processed_timestamp
-   ```
-2. **Recurring Background Cron:** The agent schedules a persistent background cron job that automatically triggers every minute:
-   - **Mode:** `CronExpression="* * * * *"`
-   - **Prompt:** Use a strictly non-conversational, 100% autonomous prompt to prevent UI prompts or stream interruptions.
-     > [!IMPORTANT]
-     > **The prompt must never instruct the agent to "present messages to the user" or write conversational chat.** If a background cron task attempts to talk to the user in the main stream, the platform's execution interceptor blocks the background thread, prompts for manual keyboard/terminal input, or breaks the recurring schedule loop.
-     
-     **Recommended Robust Cron Prompt:**
-     ```
-     Check the state file /<user>/antigravity_mailbox/.last_processed_timestamp to read the last processed message timestamp. Then list /<user>/antigravity_mailbox/inbound/ for any new JSON files with a timestamp greater than that. If any exist, view their contents, process them, write any outbound replies to /<user>/antigravity_mailbox/outbound/, and update the state file /<user>/antigravity_mailbox/.last_processed_timestamp with the highest timestamp found. Output a brief technical status log and finish immediately. NEVER output conversational text, ask questions, or prompt the user. If no new messages are found, output a single period "." and finish to save tokens.
-     ```
-3. **Processing & State Persistence:**
-   - **If new messages exist:** The agent reads and executes instructions, drops reply payloads into `outbound/`, and updates `.last_processed_timestamp` on disk.
-   - **If no new messages exist:** The agent returns a single period `.` to save tokens and goes back to sleep.
-
-### Why this is completely robust:
-* **Self-Healing:** Since the cron runs as a system background task, **the loop can never break.** Even if a command fails, a turn is aborted, or an unapproved action freezes a session, the background cron will persistently wake the agent up on the next minute to safely resume.
-* **State Persistence:** The state survives system restarts or workspace reloads because the checkpoint is written on disk.
-* **No Manual Rescheduling:** The agent does not need to schedule any additional timers at the end of its turns, keeping the loop 100% autonomous.
-* **Prompt-Safe Execution:** By keeping outputs strictly non-conversational and logging-oriented, the agent finishes each cron tick instantly without triggering terminal locks or user prompts.
-
----
-
-## 🔒 Streamer Mode (Phone Number Redaction)
-
-To protect your personal mobile phone numbers during live-streams, video demonstrations, or sharing terminal screenshots, the Mailbox Bridge features a built-in **Streamer Mode**.
-
-### What It Does:
-1. **Log Redaction:** All incoming, outgoing, and file creation logs processed by `signal_bridge.py` have E.164 phone numbers stripped and replaced with `+[REDACTED]`.
-2. **Terminal Redaction:** The terminal-facing `mailbox_watcher.py` automatically redacts file names and parsed message payloads when printing new traffic on-screen.
-3. **HTTP Log Muting:** Mutes third-party HTTP logs (such as raw request endpoint paths from `httpx`) to prevent any query-parameter leaks of connection accounts.
-4. **Intact Backend Routing:** The actual file storage, inbound payloads on disk, and outgoing API RPC calls continue to use real numbers under the hood, ensuring the application functions flawlessly.
-
-### How to Enable:
-To turn on Streamer Mode, add the configuration variable to your active `.env` file and restart the system service:
-
-```bash
-# 1. Enable Streamer Mode in active configuration
-echo "STREAMER_MODE=true" >> /<user>/antigravity_mailbox/.env
-
-# 2. Restart the mailbox bridge daemon
-systemctl restart antigravity-bridge.service
-
-# 3. (Optional) Run the watcher in streamer mode
-python3 /<user>/antigravity_mailbox/mailbox_watcher.py
-```
-
-
+No license file is included in this repository.
